@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html ng-app="PlayerApp">
+	<head>
+		
+		<title>Spotify</title>
+		<link rel="stylesheet" href="style.css" />
+		<link href='http://fonts.googleapis.com/css?family=Open+Sans:300,700' rel='stylesheet' type='text/css'>
+		<script
+			src="https://code.jquery.com/jquery-3.2.1.min.js"
+			integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+			crossorigin="anonymous">
+		</script>
+		
+		<script src="bower_components/angular/angular.js"></script>
+		<script src="bower_components/angular-route/angular-route.js"></script>
+		<script src="app.js"></script>
+		
+		<script src="services/auth.js"></script>
+		<script src="services/api.js"></script>
+		<script src="services/playback.js"></script>
+		<script src="services/playqueue.js"></script>
+		<script src="directives/playlistcover.js"></script>
+		<script src="directives/responsivecover.js"></script>
+		<script src="directives/contextmenu.js"></script>
+		<script src="directives/focusme.js"></script>
+		<script src="filters/displaytime.js"></script>
+		<script src="filters/timeago.js"></script>
+		<script src="controllers/player.js"></script>
+		<script src="controllers/login.js"></script>
+		<script src="controllers/playlist.js"></script>
+		<script src="controllers/home.js"></script>
+		<script src="controllers/artist.js"></script>
+		<script src="controllers/album.js"></script>
+		<script src="controllers/user.js"></script>
+		<script src="controllers/usertracks.js"></script>
+		<script src="controllers/playqueue.js"></script>
+		<script src="controllers/searchresults.js"></script>
+		<script src="controllers/browse.js"></script>
+		<script src="controllers/browsecategory.js"></script>
+		
+		
+		<script src="https://sdk.scdn.co/spotify-player.js"></script>
+		
+	</head>
+
+
+	<body ng-controller="AppController">
+		<div class="container">
+			<div class="fullview playerview" ng-show="showplayer">
+				<div ng-controller="PlayerController">
+					<div class="topgroup">
+						<div class="searchbox">
+							<input type="text" ng-model="query" ng-change="loadsearch()" ng-keyup="loadsearch()" placeholder="Search..." />
+						</div>
+						<div class="userbox">
+							Signed in as <b><a href="#/users/{{profileUsername}}">{{profileUsername}}</a></b>
+							<a ng-click="logout()">Log out</a>
+						</div>
+					</div>
+					<div class="midgroup">
+						<div class="menuview">
+							<div class="list scrollable">
+								<b><a href="#/">MAIN</a></b>
+								<ul class="menuitems">
+									<li><a href="#/" ng-class="getClass('/')">Browse</a></li>
+								</ul>
+								<b><a href="#/me">YOUR MUSIC</a></b>
+								<ul class="menuitems">
+									<li><a href="#/users/{{username}}/tracks" ng-class="getClass('/users/{{username}}/tracks')">Songs</a></li>
+								</ul>
+								<b><a href="#/me">PLAYLISTS</a></b>
+								<ul class="menuitems">
+									<li ng-repeat="pl in playlists track by pl.id" ng-context-menu="menuOptions(pl)" ng-class="getClass('/users/{{pl.username}}/playlists/{{pl.id}}')">
+										<a href="#/users/{{pl.username}}/playlists/{{pl.id}}" ng-if="!pl.editing">
+											{{pl.name}}
+										</a>
+										<input focus-me="focusInput" ng-blur="playlistNameBlur(pl)" ng-if="pl.editing" class="edit" type="text" value="{{pl.name}}" name="title" ng-keyup="playlistNameKeyUp($event, pl)">
+									</li>
+								</ul>
+							</div>
+							
+							
+							
+							
+							
+						
+					</div>
+					<div class="bottomgroup">
+						<div class="preview">
+							<a href="#/albums/{{trackdata.album.id}}">
+								<responsive-cover ng-model="trackdata.album.images"></responsive-cover>
+							</a>
+							<p>
+								<b>{{trackdata.name}}</b>
+								<a href="#/artists/{{trackdata.artists[0].id}}">
+									{{trackdata.artists[0].name}}
+								</a>
+							</p>
+						</div>
+						
+						<div class="leftcontrols">
+							<div class="prevbutton">
+								<a ng-click="prev()"><img src="images/btn-prev.png" /></a>
+							</div>
+
+							<div class="playbutton">
+								<a ng-click="resume()" ng-hide="playing"><img src="images/btn-play.png" /></a>
+								<a ng-click="pause()" ng-show="playing"><img src="images/btn-pause.png" /></a>
+							</div>
+
+							<div class="nextbutton">
+								<a ng-click="next()"><img src="images/btn-next.png" /></a>
+							</div>
+
+							
+						</div>
+						<div class="seekcontrols">
+							<div class="progress">{{ progress | displaytime }}</div>
+							<div class="duration">{{ duration | displaytime }}</div>
+							<div class="slider">
+								<input type="range" ng-model="progress" ng-change="changeprogress()" min="0" max="{{duration}}" />
+							</div>
+						</div>
+						<div class="rightcontrols">
+							<!--
+							a ng-click="shuffle()">SHUF</a>
+							a ng-click="repeat()">REP.</a>
+							-->
+						</div>
+					</div>
+				</div>
+			</div>
+
+		</div>
+		</div>
+		
+		
+		<img id="current-track"/>
+		<h3 id="current-track-name"></h3>
+		
+		<div>
+			<button onclick="play_music()">PLAY</button>
+			<button onclick="pause_music()">PAUSE</button>
+			<button onclick="load_tracks()">TRACKS</button>
+		</div>
+		
+		<script>
+
+
+			// Get the hash of the url
+			const hash = window.location.hash
+			.substring(1)
+			.split('&')
+			.reduce(function (initial, item) {
+			  if (item) {
+				var parts = item.split('=');
+				initial[parts[0]] = decodeURIComponent(parts[1]);
+			  }
+			  return initial;
+			}, {});
+			window.location.hash = '';
+
+			// Set token
+			let _token = hash.access_token;
+
+			const authEndpoint = 'https://accounts.spotify.com/authorize';
+
+			// Replace with your app's client ID, redirect URI and desired scopes
+			const clientId = 'f1a1b8f23c4247bb9fb704fe4d59b9ab';
+			const redirectUri = 'http://localhost:8888/';
+			const scopes = [
+			  'streaming',
+			  'user-read-birthdate',
+			  'user-read-private',
+			  'user-modify-playback-state'
+			];
+			var device_idd = 0;
+
+			// If there is no token, redirect to Spotify authorization
+			if (!_token) {
+			  window.location = `${authEndpoint}?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scopes.join('%20')}&response_type=token&show_dialog=true`;
+			}
+
+			// Set up the Web Playback SDK
+
+			window.onSpotifyPlayerAPIReady = () => {
+			  const player = new Spotify.Player({
+				name: 'Web Playback SDK Template',
+				getOAuthToken: cb => { cb(_token); }
+			  });
+			  
+			  
+
+			  // Error handling
+			  player.on('initialization_error', e => console.error(e));
+			  player.on('authentication_error', e => console.error(e));
+			  player.on('account_error', e => console.error(e));
+			  player.on('playback_error', e => console.error(e));
+
+			  // Playback status updates
+			  player.on('player_state_changed', state => {
+				console.log(state)
+				$('#current-track').attr('src', state.track_window.current_track.album.images[0].url);
+				$('#current-track-name').text(state.track_window.current_track.name);
+			  });
+
+			  // Ready
+			  player.on('ready', data => {
+				console.log('Ready with Device ID', data.device_id);
+				
+				// Play a track using our new device ID
+				play(data.device_id);
+				device_idd = data.device_id;
+			  });
+
+			  // Connect to the player!
+			  player.connect();
+			  
+			  //document.getElementById("pause2").onclick = console.log("aasdfasdfasd");//player.pause();
+			}
+
+			// Play a specified track on the Web Playback SDK's device ID
+			function play(device_id) {
+			  $.ajax({
+			   url: "https://api.spotify.com/v1/me/player/play?device_id=" + device_id,
+			   type: "PUT",
+			   data: '{"uris": ["spotify:track:3n3Ppam7vgaVa1iaRUc9Lp"]}',
+			   beforeSend: function(xhr){xhr.setRequestHeader('Authorization', 'Bearer ' + _token );},
+			   success: function(data) { 
+				 console.log(data)
+			   }
+			  });
+			}
+			
+			function pause_music(){
+				//conlose.log("asdgfasdga")
+				pause(device_idd);
+			}
+			function play_music(){
+				play(device_idd);
+			}
+			
+			function pause(device_id) {
+			  $.ajax({
+			   url: "https://api.spotify.com/v1/me/player/pause?device_id=" + device_id,
+			   type: "PUT",
+			   data: '{"uris": ["spotify:track:3n3Ppam7vgaVa1iaRUc9Lp"]}',
+			   beforeSend: function(xhr){xhr.setRequestHeader('Authorization', 'Bearer ' + _token );},
+			   success: function(data) { 
+				 console.log(data)
+			   }
+			  });
+			}
+
+			
+		</script>
+		
+	</body>
+</html>
